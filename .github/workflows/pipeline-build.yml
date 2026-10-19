@@ -46,6 +46,20 @@ jobs:
             key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
             restore-keys: ${{ runner.os }}-gradle
 
+        - name: TEMP diagnose hawkBit latency
+          if: ${{ matrix.os == 'macos-15-intel' && github.event_name == 'pull_request' }}
+          run: |
+              ./gradlew waitingHawkbitServer
+              for i in 1 2 3; do curl -s -o /dev/null --max-time 120 -w "host /UI/login %{http_code} %{time_total}s\n" http://localhost:8080/UI/login || echo "host /UI/login failed: $?"; done
+              for i in 1 2 3 4; do curl -s -u test:test -o /dev/null --max-time 120 -w "host REST %{http_code} %{time_total}s\n" http://localhost:8080/rest/v1/system/configs || echo "host REST failed: $?"; done
+              for i in 1 2; do docker run --rm --network container:test-update-server-1 curlimages/curl:latest -s -u test:test -o /dev/null --max-time 120 -w "container REST %{http_code} %{time_total}s\n" http://localhost:8080/rest/v1/system/configs || echo "container REST failed: $?"; done
+              colima status || true
+              VM_IP=$(colima list | awk '/default/ {print $NF}')
+              echo "VM IP: $VM_IP"
+              curl -s -o /dev/null --max-time 20 -w "VM IP /UI/login %{http_code} %{time_total}s\n" http://$VM_IP:8080/UI/login || echo "VM IP failed: $?"
+              exit 1
+          shell: bash
+
         #Build without test on Windows or macOS (when not a PR)
         - name: Gradle build
           env:
